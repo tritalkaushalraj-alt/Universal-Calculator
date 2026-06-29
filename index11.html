@@ -1,0 +1,1473 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Universal Calculator — Single File</title>
+
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <!-- Lucide icons -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+
+  <!-- math.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.11.0/math.min.js"></script>
+
+  <style>
+    :root{
+      --bg:#0a0e1a; --panel:#1a2035; --accent:#00d4ff; --accent2:#ff2d78; --amber:#ffb347;
+      --muted:#6b7280; --glass:rgba(255,255,255,0.03);
+      --radius:12px; --mono:'JetBrains Mono', monospace; --ui:'Space Grotesk', system-ui, sans-serif;
+      --nav-h:64px;
+    }
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,#05060a 0%,var(--bg) 100%);font-family:var(--ui);color:#e6eef8;-webkit-font-smoothing:antialiased;overflow:hidden}
+    canvas#bgCanvas{position:fixed;inset:0;z-index:0}
+    .app{
+      position:relative; z-index:2; height:100vh; display:flex; flex-direction:column;
+      backdrop-filter: blur(4px);
+    }
+    header{
+      height:var(--nav-h); display:flex; align-items:center; gap:18px; padding:12px 20px;
+      border-bottom:1px solid rgba(255,255,255,0.03);
+      background:linear-gradient(90deg, rgba(255,255,255,0.01), transparent);
+    }
+    .brand{display:flex;align-items:center;gap:12px}
+    .logo{
+      width:44px;height:44px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));
+      box-shadow:0 6px 24px rgba(0,212,255,0.08),0 0 18px rgba(255,45,120,0.04);
+      display:flex;align-items:center;justify-content:center;color:#071225;font-weight:700;font-family:var(--mono)
+    }
+    h1{font-size:16px;margin:0;font-weight:700;letter-spacing:0.4px}
+    .subtitle{font-size:12px;color:var(--muted);margin-top:2px}
+    nav.tabs{display:flex;gap:8px;margin-left:20px;flex:1;align-items:center}
+    nav.tabs button{
+      background:transparent;border:0;color:#bcddee;padding:8px 12px;border-radius:10px;font-weight:600;
+      cursor:pointer;transition:all .18s; position:relative;overflow:hidden;font-size:13px;
+    }
+    nav.tabs button.active{background:linear-gradient(90deg, rgba(0,212,255,0.08), rgba(255,45,120,0.03));box-shadow:0 6px 20px rgba(0,212,255,0.03);color:white}
+    .nav-actions{display:flex;gap:8px;align-items:center}
+    .main{
+      display:grid;grid-template-columns:1fr 360px; gap:18px;padding:20px;height:calc(100vh - var(--nav-h) - 40px);box-sizing:border-box;
+    }
+    .modules{background:transparent;border-radius:16px;padding:18px;overflow:auto;height:100%}
+    .panel{
+      background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
+      border-radius:12px;padding:16px;color:#e6eef8;box-shadow:0 6px 30px rgba(2,6,23,0.55);
+      min-height:100%; transition:transform .25s ease,opacity .25s ease;
+    }
+    .panel.hidden{opacity:0;transform:translateY(10px);pointer-events:none;position:absolute;inset:0}
+    .panel h2{margin:0 0 6px 0;font-family:var(--ui)}
+    .desc{font-size:13px;color:var(--muted);margin-bottom:12px}
+    /* Calculator layout */
+    .calc{
+      display:grid;grid-template-columns:360px 1fr;gap:18px;
+    }
+    .calc-left{background:linear-gradient(180deg, rgba(0,0,0,0.12), rgba(255,255,255,0.01));padding:12px;border-radius:12px;min-height:420px}
+    .display{
+      background:linear-gradient(90deg, rgba(255,255,255,0.01), rgba(255,255,255,0.005));padding:12px;border-radius:10px;margin-bottom:12px;
+      color:var(--amber);font-family:var(--mono);font-size:22px;min-height:64px;display:flex;flex-direction:column;justify-content:center;
+      box-shadow:inset 0 -1px 0 rgba(255,255,255,0.02);
+    }
+    .expr{color:#9fcbe9;font-family:var(--ui);font-size:12px}
+    .value{font-size:28px;color:var(--amber);font-weight:700}
+    .kbd{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+    .btn{
+      background:linear-gradient(180deg,rgba(255,255,255,0.01), rgba(0,0,0,0.06));border-radius:10px;padding:12px 8px;color:#dff9ff;border:0;cursor:pointer;font-weight:700;
+      position:relative;overflow:hidden;font-family:var(--ui);box-shadow:0 4px 12px rgba(2,6,23,0.6);
+    }
+    .btn.secondary{background:transparent;border:1px solid rgba(255,255,255,0.04);color:#bfefff}
+    .btn.wide{grid-column:span 2}
+    /* ripple */
+    .btn:after{content:"";position:absolute;border-radius:50%;transform:scale(0);opacity:0;transition:transform .4s,opacity .8s}
+    .btn.ripple:after{transform:scale(3);opacity:0.12;background:radial-gradient(circle,#fff 0%,transparent 40%);}
+    /* right side */
+    .panel-right{display:flex;flex-direction:column;gap:12px}
+    .card{background:var(--panel);padding:12px;border-radius:12px;box-shadow:0 6px 16px rgba(0,0,0,0.5);min-height:120px}
+    /* history list */
+    .history-list{overflow:auto;max-height:calc(100% - 60px);padding-right:6px}
+    .history-item{display:flex;justify-content:space-between;padding:8px;border-radius:8px;margin-bottom:8px;background:linear-gradient(180deg, rgba(255,255,255,0.01), transparent);font-family:var(--mono);font-size:13px}
+    .small{font-size:12px;color:var(--muted)}
+    /* tab transition helper */
+    .tab-enter{opacity:0;transform:translateX(20px)} .tab-leave{opacity:0;transform:translateX(-20px)}
+    /* unit circle */
+    .unit-circle{width:240px;height:240px;display:block;margin:8px auto}
+    /* forms */
+    .row{display:flex;gap:8px;align-items:center}
+    input,select{background:var(--glass);border:1px solid rgba(255,255,255,0.03);padding:8px;border-radius:8px;color:#e6eef8;font-family:var(--ui);outline:none}
+    label{font-size:13px;color:var(--muted)}
+    .muted{color:var(--muted);font-size:12px}
+    /* buttons */
+    .primary{background:linear-gradient(90deg,var(--accent),var(--accent2));color:#061322;border:0;padding:10px 12px;border-radius:10px;font-weight:700}
+    /* responsive */
+    @media (max-width:900px){
+      .main{grid-template-columns:1fr; padding:12px}
+      .calc{grid-template-columns:1fr}
+    }
+    /* animations */
+    @keyframes glowPulse{0%{box-shadow:0 0 0 rgba(0,212,255,0.06)}50%{box-shadow:0 0 28px rgba(0,212,255,0.06)}100%{box-shadow:0 0 0 rgba(0,212,255,0.06)}}
+    .active-panel{animation:glowPulse 3s ease-in-out infinite}
+    @keyframes shake{0%{transform:translateX(0)}25%{transform:translateX(-6px)}50%{transform:translateX(6px)}75%{transform:translateX(-4px)}100%{transform:translateX(0)}}
+    .error{animation:shake .45s}
+    /* small helpers */
+    .flex{display:flex;gap:8px;align-items:center}
+    .right{margin-left:auto}
+    .chip{padding:6px 8px;background:rgba(255,255,255,0.02);border-radius:8px;font-size:13px}
+    .toggle{display:inline-flex;align-items:center;background:rgba(255,255,255,0.02);padding:6px;border-radius:20px}
+    .badge{font-size:12px;color:var(--muted)}
+  </style>
+</head>
+<body>
+<canvas id="bgCanvas"></canvas>
+<div class="app">
+  <header>
+    <div class="brand">
+      <div class="logo">UC</div>
+      <div>
+        <h1>Universal Calculator</h1>
+        <div class="subtitle">Deep-space themed, offline, single-file — math.js powered</div>
+      </div>
+    </div>
+
+    <nav class="tabs" role="tablist" aria-label="Modules">
+      <button class="tab-btn active" data-tab="calc">Calculator</button>
+      <button class="tab-btn" data-tab="physics">Physics</button>
+      <button class="tab-btn" data-tab="data">Data & Speed</button>
+      <button class="tab-btn" data-tab="electric">Electricity</button>
+      <button class="tab-btn" data-tab="chem">Chemistry</button>
+      <button class="tab-btn" data-tab="trig">Trigonometry</button>
+      <button class="tab-btn" data-tab="logic">Logic & Conversions</button>
+      <button class="tab-btn" data-tab="history">History Log</button>
+    </nav>
+
+    <div class="nav-actions">
+      <button class="chip" id="clearHistoryTop">Clear History</button>
+      <button class="chip" id="aboutBtn">About</button>
+    </div>
+  </header>
+
+  <div class="main">
+    <div class="modules">
+      <!-- Calculator Panel -->
+      <section id="calc" class="panel active-panel">
+        <h2>Calculator — Standard + Scientific</h2>
+        <div class="desc">Standard calculator with scientific functions, degrees/radians toggle, memory, keyboard support, and safe evaluation via math.js.</div>
+
+        <div class="calc">
+          <div class="calc-left">
+            <div class="display" id="display">
+              <div class="expr" id="expr"> </div>
+              <div class="value" id="value">0</div>
+            </div>
+
+            <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+              <div class="toggle" style="gap:8px">
+                <label class="small" style="margin-right:6px">Mode</label>
+                <select id="angleMode">
+                  <option value="deg">Degrees</option>
+                  <option value="rad">Radians</option>
+                </select>
+              </div>
+
+              <div style="display:flex;gap:8px;margin-left:auto">
+                <button class="btn secondary" id="mc">MC</button>
+                <button class="btn secondary" id="mr">MR</button>
+                <button class="btn secondary" id="mplus">M+</button>
+                <button class="btn secondary" id="mminus">M-</button>
+              </div>
+            </div>
+
+            <div class="kbd" id="buttons">
+              <!-- row 1 -->
+              <button class="btn secondary" data-val="(">(</button>
+              <button class="btn secondary" data-val=")">)</button>
+              <button class="btn secondary" data-val="%">%</button>
+              <button class="btn secondary" data-val="pi">π</button>
+              <button class="btn secondary" data-val="e">e</button>
+              <button class="btn secondary" data-action="back">⌫</button>
+
+              <!-- row 2 -->
+              <button class="btn" data-val="7">7</button>
+              <button class="btn" data-val="8">8</button>
+              <button class="btn" data-val="9">9</button>
+              <button class="btn secondary" data-val="/">÷</button>
+              <button class="btn secondary" data-val="sqrt">√</button>
+              <button class="btn secondary" data-val="^">xⁿ</button>
+
+              <!-- row 3 -->
+              <button class="btn" data-val="4">4</button>
+              <button class="btn" data-val="5">5</button>
+              <button class="btn" data-val="6">6</button>
+              <button class="btn secondary" data-val="*">×</button>
+              <button class="btn secondary" data-val="!">!</button>
+              <button class="btn secondary" data-val="^2">x²</button>
+
+              <!-- row 4 -->
+              <button class="btn" data-val="1">1</button>
+              <button class="btn" data-val="2">2</button>
+              <button class="btn" data-val="3">3</button>
+              <button class="btn secondary" data-val="-">−</button>
+              <button class="btn secondary" data-val="log">log</button>
+              <button class="btn secondary" data-val="ln">ln</button>
+
+              <!-- row 5 -->
+              <button class="btn" data-val="0">0</button>
+              <button class="btn" data-val=".">.</button>
+              <button class="btn wide primary" data-action="equals">=</button>
+              <button class="btn secondary" data-val="+">+</button>
+              <button class="btn secondary" data-action="clear">C</button>
+
+              <!-- scientific row -->
+              <button class="btn secondary" data-val="sin">sin</button>
+              <button class="btn secondary" data-val="cos">cos</button>
+              <button class="btn secondary" data-val="tan">tan</button>
+              <button class="btn secondary" data-val="asin">asin</button>
+              <button class="btn secondary" data-val="acos">acos</button>
+              <button class="btn secondary" data-val="atan">atan</button>
+            </div>
+
+            <div style="margin-top:10px;color:var(--muted);font-size:13px">
+              Tip: keyboard supported — Enter = calculate, Escape = clear.
+            </div>
+          </div>
+
+          <div class="panel-right">
+            <div class="card">
+              <h3 style="margin:0 0 8px 0">Expression</h3>
+              <div class="muted">Full expression preview and last evaluation</div>
+              <pre id="exprPreview" style="font-family:var(--mono);margin-top:8px;background:transparent;border-radius:8px;padding:8px"> </pre>
+            </div>
+
+            <div class="card">
+              <h3 style="margin:0 0 8px 0">Quick Examples</h3>
+              <div class="muted">Try: 3! → sin(90) → log(1000) → sqrt(144) → 5%*200</div>
+            </div>
+
+            <div class="card">
+              <h3 style="margin:0 0 8px 0">Memory</h3>
+              <div id="memVal" class="muted">Memory: 0</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Physics -->
+      <section id="physics" class="panel hidden">
+        <h2>Physics Calculator</h2>
+        <div class="desc">Speed conversions, kinematics solver, force/work/energy, and projectile/free-fall utilities.</div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="card">
+            <h3>Speed of Light Conversions</h3>
+            <div class="muted">c = 299,792,458 m/s</div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <input id="cInput" placeholder="value" />
+              <select id="cUnit">
+                <option value="m/s">m/s</option><option value="km/s">km/s</option>
+                <option value="mph">mph</option><option value="miles/s">miles/s</option>
+                <option value="light-min">light-min</option><option value="light-yr">light-yr</option><option value="mach">mach</option>
+              </select>
+              <button class="primary" id="convertC">Convert</button>
+            </div>
+            <pre id="cOutput" style="font-family:var(--mono);margin-top:8px"></pre>
+          </div>
+
+          <div class="card">
+            <h3>Kinematics (provide any 3)</h3>
+            <div class="muted">Solve for unknown using v=u+at, s=ut+½at², v²=u²+2as</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+              <input id="u" placeholder="u (m/s)" />
+              <input id="v" placeholder="v (m/s)" />
+              <input id="a" placeholder="a (m/s²)" />
+              <input id="t" placeholder="t (s)" />
+              <input id="s" placeholder="s (m)" />
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <button class="primary" id="solveKin">Solve</button>
+              <button class="btn secondary" id="clearKin">Clear</button>
+            </div>
+            <pre id="kinOutput" style="font-family:var(--mono);margin-top:8px"></pre>
+          </div>
+
+          <div class="card">
+            <h3>Force / Work / Energy</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <input id="mass" placeholder="m (kg)" />
+              <input id="acc" placeholder="a (m/s²)" />
+              <input id="dist" placeholder="d (m)" />
+              <input id="vel" placeholder="v (m/s)" />
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <button class="primary" id="calcF">Calc</button>
+            </div>
+            <pre id="fOutput" style="font-family:var(--mono);margin-top:8px"></pre>
+          </div>
+
+          <div class="card">
+            <h3>Projectile & Free Fall</h3>
+            <div style="display:flex;gap:8px">
+              <input id="projSpeed" placeholder="speed (m/s)" />
+              <input id="projAngle" placeholder="angle (deg)" />
+              <button class="primary" id="projCalc">Compute</button>
+            </div>
+            <div style="margin-top:8px">
+              <input id="fallHeight" placeholder="free-fall height (m)" />
+              <button class="primary" id="fallCalc">Free-fall</button>
+            </div>
+            <pre id="projOutput" style="font-family:var(--mono);margin-top:8px"></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- Data & Speed -->
+      <section id="data" class="panel hidden">
+        <h2>Data Transfer & Internet Speed</h2>
+        <div class="desc">File transfer times, data unit conversions (SI & binary), bandwidth estimator, and presets.</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="card">
+            <h3>Transfer Time</h3>
+            <div style="display:flex;gap:8px">
+              <input id="fileSize" placeholder="e.g. 5 GB" />
+              <input id="speedVal" placeholder="e.g. 100 Mbps" />
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <button class="primary" id="transferCalc">Estimate</button>
+            </div>
+            <pre id="transferOut" style="font-family:var(--mono);margin-top:8px"></pre>
+            <div class="muted" style="margin-top:6px">Formula: Time = File Size (bits) ÷ Speed (bps)</div>
+          </div>
+
+          <div class="card">
+            <h3>Data Unit Converter</h3>
+            <div style="display:flex;gap:8px">
+              <input id="duVal" placeholder="value" />
+              <select id="duFrom">
+                <option>B</option><option>KB</option><option>MB</option><option>GB</option><option>TB</option>
+              </select>
+              <select id="duTo">
+                <option>B</option><option>KB</option><option>MB</option><option>GB</option><option>TB</option>
+              </select>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <button class="primary" id="duCalc">Convert</button>
+            </div>
+            <pre id="duOut" style="font-family:var(--mono);margin-top:8px"></pre>
+          </div>
+
+          <div class="card">
+            <h3>Bandwidth Estimator</h3>
+            <div style="display:flex;gap:8px">
+              <input id="users" placeholder="number of users" />
+              <select id="activity">
+                <option value="browse">Browsing</option>
+                <option value="gaming">Gaming</option>
+                <option value="videoSD">Video SD</option>
+                <option value="videoHD">Video HD</option>
+                <option value="video4K">Video 4K</option>
+                <option value="videocall">Video Call</option>
+              </select>
+              <button class="primary" id="bwCalc">Estimate</button>
+            </div>
+            <pre id="bwOut" style="font-family:var(--mono);margin-top:8px"></pre>
+          </div>
+
+          <div class="card">
+            <h3>Presets</h3>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <button class="btn" data-size="50GB" data-speed="100Mbps">Movie 4K (~50GB)</button>
+              <button class="btn" data-size="8GB" data-speed="50Mbps">Movie HD (~8GB)</button>
+              <button class="btn" data-size="100GB" data-speed="200Mbps">Game (~100GB)</button>
+            </div>
+            <pre id="presetOut" style="font-family:var(--mono);margin-top:8px"></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- Electricity -->
+      <section id="electric" class="panel hidden">
+        <h2>Electricity</h2>
+        <div class="desc">Ohm's law solver, RPM & motor calculations, energy & cost, capacitive/inductive formulas.</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="card">
+            <h3>Ohm's Law Solver</h3>
+            <div class="muted">Input any 2 of V,I,R,P to solve the rest</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+              <input id="V" placeholder="Voltage V" />
+              <input id="I" placeholder="Current I" />
+              <input id="R" placeholder="Resistance R" />
+              <input id="P" placeholder="Power P" />
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <button class="primary" id="ohmCalc">Solve</button>
+            </div>
+            <svg id="circuit" width="100%" height="120" style="margin-top:8px"></svg>
+            <pre id="ohmOut" style="font-family:var(--mono);margin-top:8px"></pre>
+          </div>
+
+          <div class="card">
+            <h3>RPM & Motor</h3>
+            <div style="display:flex;gap:8px">
+              <input id="freq" placeholder="f (Hz)" />
+              <input id="poles" placeholder="Poles (P)" />
+              <button class="primary" id="rpmCalc">Calc RPM</button>
+            </div>
+            <div style="margin-top:8px">
+              <input id="powerW" placeholder="Power (W)" />
+              <input id="rpmVal" placeholder="RPM (optional)" />
+              <button class="primary" id="torqueCalc">Torque</button>
+            </div>
+            <pre id="motorOut" style="font-family:var(--mono);margin-top:8px"></pre>
+          </div>
+
+          <div class="card">
+            <h3>Energy & Cost</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <input id="wattage" placeholder="Wattage (W)" />
+              <input id="hours" placeholder="hours/day" />
+              <input id="days" placeholder="days" />
+              <input id="price" placeholder="price per kWh" />
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <button class="primary" id="energyCalc">Estimate Cost</button>
+            </div>
+            <pre id="energyOut" style="font-family:var(--mono);margin-top:8px"></pre>
+          </div>
+
+          <div class="card">
+            <h3>Reactive Components</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <input id="cR" placeholder="R (Ω)" />
+              <input id="cC" placeholder="C (F)" />
+              <input id="iFreq" placeholder="f (Hz)" />
+              <input id="iL" placeholder="L (H)" />
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <button class="primary" id="reactCalc">Calc</button>
+            </div>
+            <pre id="reactOut" style="font-family:var(--mono);margin-top:8px"></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- Chemistry -->
+      <section id="chem" class="panel hidden">
+        <h2>Chemistry</h2>
+        <div class="desc">Molar mass calculator (built-in periodic table), molarity, ideal gas law, pH, and stoichiometry helper.</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="card">
+            <h3>Molar Mass</h3>
+            <div class="muted">Enter formula (e.g., H2O, C6H12O6)</div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <input id="formula" placeholder="e.g. H2O" />
+              <button class="primary" id="mmCalc">Calc</button>
+            </div>
+            <pre id="mmOut" style="font-family:var(--mono);margin-top:8px"></pre>
+          </div>
+
+          <div class="card">
+            <h3>Molarity & Dilution</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <input id="mass_m" placeholder="mass (g)" />
+              <input id="molarmass_m" placeholder="molar mass (g/mol)" />
+              <input id="vol_L" placeholder="volume (L)" />
+              <input id="moles" placeholder="moles" />
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <button class="primary" id="molarCalc">Calc M</button>
+              <button class="btn secondary" id="diluteCalc">C1V1=C2V2</button>
+            </div>
+            <pre id="molarOut" style="font-family:var(--mono);margin-top:8px"></pre>
+          </div>
+
+          <div class="card">
+            <h3>Ideal Gas Law</h3>
+            <div class="muted">PV = nRT</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+              <input id="P" placeholder="P (atm)" />
+              <input id="V" placeholder="V (L)" />
+              <input id="n" placeholder="n (mol)" />
+              <input id="T" placeholder="T (K)" />
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <button class="primary" id="idealCalc">Solve</button>
+            </div>
+            <pre id="idealOut" style="font-family:var(--mono);margin-top:8px"></pre>
+          </div>
+
+          <div class="card">
+            <h3>pH Calculator</h3>
+            <div style="display:flex;gap:8px">
+              <input id="hConc" placeholder="[H+] (e.g. 1e-7)" />
+              <input id="pHVal" placeholder="pH" />
+              <button class="primary" id="pHCalc">Calc</button>
+            </div>
+            <pre id="pHOut" style="font-family:var(--mono);margin-top:8px"></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- Trigonometry -->
+      <section id="trig" class="panel hidden">
+        <h2>Trigonometry</h2>
+        <div class="desc">Unit circle, trig functions, inverse trig, right triangle solver, laws of sines/cosines, and angle conversions.</div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="card">
+            <h3>Unit Circle</h3>
+            <svg class="unit-circle" viewBox="-120 -120 240 240" id="unitSVG">
+              <defs>
+                <linearGradient id="g1"><stop offset="0" stop-color="#00d4ff"/><stop offset="1" stop-color="#ff2d78"/></linearGradient>
+              </defs>
+              <circle cx="0" cy="0" r="100" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="2"></circle>
+              <g id="dotLayer"></g>
+            </svg>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input id="angleIn" placeholder="angle (deg)" />
+              <select id="angleUnit">
+                <option value="deg">deg</option><option value="rad">rad</option><option value="grad">grad</option>
+              </select>
+              <button class="primary" id="angleApply">Apply</button>
+            </div>
+            <pre id="trigOut" style="font-family:var(--mono);margin-top:8px"></pre>
+          </div>
+
+          <div class="card">
+            <h3>Right Triangle Solver</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <input id="sideA" placeholder="side a" />
+              <input id="sideB" placeholder="side b" />
+              <input id="sideC" placeholder="hypotenuse c" />
+              <input id="angleAlpha" placeholder="angle α (deg)" />
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <button class="primary" id="triSolve">Solve</button>
+            </div>
+            <pre id="triOut" style="font-family:var(--mono);margin-top:8px"></pre>
+          </div>
+
+          <div class="card">
+            <h3>Law of Sines & Cosines</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <input id="aLS" placeholder="a" />
+              <input id="bLS" placeholder="b" />
+              <input id="cLS" placeholder="c" />
+              <input id="A_LS" placeholder="A (deg)" />
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <button class="primary" id="losCalc">Compute</button>
+            </div>
+            <pre id="losOut" style="font-family:var(--mono);margin-top:8px"></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- Logic & Conversions -->
+      <section id="logic" class="panel hidden">
+        <h2>Logic & Conversions</h2>
+        <div class="desc">Base converters, logic gate truth tables, unit conversions, percentages, permutations/combinations.</div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="card">
+            <h3>Base Converter</h3>
+            <div style="display:flex;gap:8px">
+              <input id="baseInput" placeholder="value" />
+              <select id="fromBase"><option value="2">Binary</option><option value="8">Octal</option><option value="10" selected>Decimal</option><option value="16">Hex</option></select>
+              <select id="toBase"><option value="2">Binary</option><option value="8">Octal</option><option value="10">Decimal</option><option value="16">Hex</option></select>
+              <button class="primary" id="baseConv">Convert</button>
+            </div>
+            <pre id="baseOut" style="font-family:var(--mono);margin-top:8px"></pre>
+          </div>
+
+          <div class="card">
+            <h3>Logic Gate Truth Table</h3>
+            <div style="display:flex;gap:8px">
+              <select id="gateSelect"><option>AND</option><option>OR</option><option>NOT</option><option>NAND</option><option>NOR</option><option>XOR</option><option>XNOR</option></select>
+              <select id="varCount"><option>2</option><option>3</option><option>4</option></select>
+              <button class="primary" id="truthCalc">Generate</button>
+            </div>
+            <pre id="truthOut" style="font-family:var(--mono);margin-top:8px;overflow:auto;max-height:240px"></pre>
+          </div>
+
+          <div class="card">
+            <h3>Unit Converter (Length/Temp/Mass)</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+              <input id="ucVal" placeholder="value" />
+              <select id="ucFrom"><option>m</option><option>km</option><option>cm</option><option>mm</option><option>in</option><option>ft</option><option>mi</option></select>
+              <select id="ucTo"><option>m</option><option>km</option><option>cm</option><option>mm</option><option>in</option><option>ft</option><option>mi</option></select>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <button class="primary" id="ucCalc">Convert</button>
+            </div>
+            <pre id="ucOut" style="font-family:var(--mono);margin-top:8px"></pre>
+          </div>
+
+          <div class="card">
+            <h3>Factorials / P / C</h3>
+            <div style="display:flex;gap:8px">
+              <input id="nVal" placeholder="n" />
+              <input id="rVal" placeholder="r" />
+              <button class="primary" id="permCalc">P(n,r)</button>
+              <button class="primary" id="combCalc">C(n,r)</button>
+            </div>
+            <pre id="facOut" style="font-family:var(--mono);margin-top:8px"></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- History -->
+      <section id="history" class="panel hidden">
+        <h2>History Log</h2>
+        <div class="desc">All calculations are auto-logged with timestamp, module, inputs, and result. Persisted in localStorage.</div>
+
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <input id="histSearch" placeholder="Search history..." style="flex:1" />
+          <select id="histFilter">
+            <option value="all">All</option>
+            <option value="Calculator">Calculator</option>
+            <option value="Physics">Physics</option>
+            <option value="Data">Data & Speed</option>
+            <option value="Electricity">Electricity</option>
+            <option value="Chemistry">Chemistry</option>
+            <option value="Trigonometry">Trigonometry</option>
+            <option value="Logic">Logic & Conversions</option>
+          </select>
+          <button class="btn secondary" id="clearHistory">Clear History</button>
+        </div>
+
+        <div class="history-list card" id="historyList"></div>
+      </section>
+    </div>
+
+    <!-- small right side panel (floating widgets) -->
+    <aside style="width:360px;display:flex;flex-direction:column;gap:12px">
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:44px;height:44;border-radius:8px;background:linear-gradient(90deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-weight:700">Σ</div>
+          <div>
+            <div style="font-weight:700">Quick History</div>
+            <div class="muted">Recent calculations</div>
+          </div>
+        </div>
+        <div id="quickList" style="margin-top:12px"></div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0">Theme</h3>
+        <div class="muted" style="margin-top:6px">Designed with Space Grotesk & JetBrains Mono. Use on desktop or mobile.</div>
+      </div>
+
+      <div class="card" style="text-align:center">
+        <div class="muted">Built with math.js and vanilla JS — offline-ready</div>
+        <div style="margin-top:10px"><button class="primary" id="exportHistory">Export History</button></div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+/* ---------------------------
+   Utilities & State
+   --------------------------- */
+const state = {
+  expr: '',
+  lastExpr: '',
+  mem: 0,
+  angleMode: 'deg',
+  history: JSON.parse(localStorage.getItem('uc_history')||'[]')
+};
+
+function addHistory(module, inputs, result){
+  const entry = {id:Date.now(),ts:new Date().toISOString(),module,inputs,result};
+  state.history.unshift(entry);
+  localStorage.setItem('uc_history', JSON.stringify(state.history));
+  renderHistory();
+  renderQuick();
+}
+
+/* ---------------------------
+   Background rain animation
+   --------------------------- */
+const canvas = document.getElementById('bgCanvas');
+const ctx = canvas.getContext('2d');
+let W = canvas.width = innerWidth;
+let H = canvas.height = innerHeight;
+const symbols = '0123456789π√Σ∑∞+-*/=' .split('');
+let drops = [];
+function initRain(){
+  W = canvas.width = innerWidth; H = canvas.height = innerHeight; drops = [];
+  const cols = Math.floor(W/20);
+  for(let i=0;i<cols;i++){
+    drops.push({x:i*20+10,y:Math.random()*-H,speed:1+Math.random()*3,char:symbols[Math.floor(Math.random()*symbols.length)],ttl:Math.random()*100});
+  }
+}
+function draw(){ ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = "rgba(10,14,26,0.3)"; ctx.fillRect(0,0,W,H);
+  ctx.font = '18px "JetBrains Mono"';
+  for(let d of drops){
+    ctx.fillStyle = 'rgba(0,212,255,0.08)';
+    ctx.fillText(d.char,d.x,d.y);
+    d.y += d.speed*2;
+    if(d.y>H+20){ d.y = -20; d.char = symbols[Math.floor(Math.random()*symbols.length)]; }
+  }
+}
+initRain();
+let rainFrame = requestAnimationFrame(function loop(){
+  draw(); rainFrame = requestAnimationFrame(loop);
+});
+// fade after 3s to subtle
+setTimeout(()=> {
+  cancelAnimationFrame(rainFrame);
+  // redraw sparsely and fade
+  const sparse = setInterval(()=> {
+    ctx.clearRect(0,0,W,H);
+    for(let i=0;i<50;i++){
+      const ch = symbols[Math.floor(Math.random()*symbols.length)];
+      ctx.fillStyle = 'rgba(0,212,255,0.03)';
+      ctx.font = `${8+Math.random()*18}px "JetBrains Mono"`;
+      ctx.fillText(ch, Math.random()*W, Math.random()*H);
+    }
+  },300);
+  setTimeout(()=> clearInterval(sparse),2000);
+},3000);
+addEventListener('resize', initRain);
+
+/* ---------------------------
+   Tab switching
+   --------------------------- */
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=> {
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    const tab = btn.dataset.tab;
+    document.querySelectorAll('.panel').forEach(p=> {
+      if(p.id===tab){ p.classList.remove('hidden'); } else { p.classList.add('hidden'); }
+    });
+  });
+});
+
+/* ---------------------------
+   Ripple effect for buttons
+   --------------------------- */
+document.querySelectorAll('.btn, .primary, .chip').forEach(b=>{
+  b.addEventListener('click', (e)=>{
+    b.classList.add('ripple');
+    setTimeout(()=>b.classList.remove('ripple'),400);
+  });
+});
+
+/* ---------------------------
+   Calculator logic (Module 1)
+   --------------------------- */
+const exprEl = document.getElementById('expr');
+const valEl = document.getElementById('value');
+const exprPreview = document.getElementById('exprPreview');
+function refreshDisplay(){ exprEl.textContent = state.expr; exprPreview.textContent = state.lastExpr || ''; valEl.textContent = state.expr || '0'; }
+
+document.getElementById('buttons').addEventListener('click', (e)=>{
+  const btn = e.target.closest('button');
+  if(!btn) return;
+  const v = btn.dataset.val;
+  const action = btn.dataset.action;
+  if(action==='back'){ state.expr = state.expr.slice(0,-1); refreshDisplay(); return; }
+  if(action==='clear'){ state.expr=''; state.lastExpr=''; refreshDisplay(); return; }
+  if(action==='equals'){ doEquals(); return; }
+  if(v){
+    if(v==='pi') state.expr += 'pi';
+    else if(v==='sqrt') state.expr += 'sqrt(';
+    else if(v==='^2') state.expr += '^2';
+    else state.expr += v;
+    refreshDisplay();
+  }
+});
+
+document.getElementById('angleMode').addEventListener('change', (e)=> state.angleMode = e.target.value);
+
+/* memory buttons */
+document.getElementById('mc').addEventListener('click', ()=> { state.mem = 0; updateMemDisplay(); });
+document.getElementById('mr').addEventListener('click', ()=> { state.expr += String(state.mem); refreshDisplay(); });
+document.getElementById('mplus').addEventListener('click', ()=> { const v = safeEval(state.expr)||0; state.mem += v; updateMemDisplay(); });
+document.getElementById('mminus').addEventListener('click', ()=> { const v = safeEval(state.expr)||0; state.mem -= v; updateMemDisplay(); });
+function updateMemDisplay(){ document.getElementById('memVal').textContent = 'Memory: '+state.mem; }
+
+/* keyboard */
+addEventListener('keydown', (e)=>{
+  if(e.key==='Enter'){ doEquals(); e.preventDefault(); }
+  if(e.key==='Escape'){ state.expr=''; refreshDisplay(); }
+  if(e.key==='Backspace'){ state.expr = state.expr.slice(0,-1); refreshDisplay(); }
+  const allowed = '0123456789.+-*/()%';
+  if(allowed.includes(e.key)) { state.expr += e.key; refreshDisplay(); }
+  if(e.key==='p') state.expr += 'pi';
+});
+
+/* safe evaluation with math.js and degree handling */
+function toRadiansIfNeeded(expr){
+  if(state.angleMode==='deg'){
+    // replace sin(x) with sin(x*pi/180) etc.
+    return expr.replace(/\b(sin|cos|tan|asin|acos|atan)\s*\(/g, (m,fn)=> {
+      if(fn.startsWith('a')) return `${fn}(`; // inverse trig keep rad output
+      return `${fn}((${fn==='tan'?'':'')}`); // fallback handled below
+    }).replace(/\bsin\(/g,'sin(deg(').replace(/\bcos\(/g,'cos(deg(').replace(/\btan\(/g,'tan(deg('));
+    // We'll instead use math.js custom function deg()
+  }
+  return expr;
+}
+/* create deg wrapper for math.js */
+math.import({
+  deg: function(x){ return x * Math.PI / 180; }
+}, {override:true});
+
+/* factorial support */
+math.import({
+  fact: function(n){ return math.factorial(n); }
+}, {override:true});
+
+function preprocess(expr){
+  // replace unicode symbols
+  expr = expr.replace(/÷/g,'/').replace(/×/g,'*').replace(/π/g,'pi').replace(/%/g,'%');
+  // handle percent operator: turn 'a%b' into (a/100)*b? But we support '5% of 200' by allowing user to type 0.05*200
+  // translate trailing % to divide by 100 (e.g., 5% -> (5/100))
+  expr = expr.replace(/(\d+(\.\d+)?)%/g, '($1/100)');
+  // handle factorial '!'
+  expr = expr.replace(/(\d+)!/g, 'fact($1)');
+  // handle sqrt symbol
+  expr = expr.replace(/sqrt\(/g,'sqrt(');
+  // if in deg mode, wrap trig functions
+  if(state.angleMode==='deg'){
+    expr = expr.replace(/\b(sin|cos|tan)\s*\(/g, (m,fn)=>`${fn}(deg(`);
+    expr = expr.replace(/\)(?![^\)]*\))/g, ')'); // keep parentheses balanced
+  }
+  return expr;
+}
+
+function safeEval(expr){
+  if(!expr) return 0;
+  try{
+    const p = preprocess(expr);
+    const res = math.evaluate(p);
+    return res;
+  } catch(err){
+    // expose specific errors
+    throw err;
+  }
+}
+
+function countUp(target,el){
+  const start = 0;
+  const duration = 500;
+  const startTime = performance.now();
+  function step(now){
+    const t = Math.min(1,(now-startTime)/duration);
+    const val = start + (target-start)*t;
+    el.textContent = (Math.abs(target) < 1e-6 ? target : (Math.round(val*100000)/100000));
+    if(t<1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+function doEquals(){
+  try{
+    const result = safeEval(state.expr);
+    state.lastExpr = state.expr + ' = ' + result;
+    exprPreview.textContent = state.lastExpr;
+    addHistory('Calculator', state.expr, result);
+    // animate count-up
+    countUp(result, valEl);
+    state.expr = String(result);
+    refreshDisplay();
+  } catch(err){
+    valEl.textContent = 'Error';
+    document.getElementById('display').classList.add('error');
+    setTimeout(()=> document.getElementById('display').classList.remove('error'),450);
+    exprPreview.textContent = 'Error: ' + (err && err.message ? err.message : 'Invalid input');
+  }
+}
+
+/* ---------------------------
+   History rendering
+   --------------------------- */
+function renderHistory(){
+  const list = document.getElementById('historyList');
+  list.innerHTML = '';
+  const q = document.getElementById('histSearch')?.value?.toLowerCase()||'';
+  const f = document.getElementById('histFilter')?.value || 'all';
+  const filtered = state.history.filter(h=>{
+    if(f!=='all' && h.module !== f && !(f==='Data & Speed' && h.module==='Data')) return false;
+    if(q && !(JSON.stringify(h).toLowerCase().includes(q))) return false;
+    return true;
+  });
+  for(const h of filtered){
+    const el = document.createElement('div'); el.className='history-item';
+    el.innerHTML = `<div><div style="font-weight:700">${h.module}</div><div class="small">${new Date(h.ts).toLocaleString()}</div></div>
+      <div style="text-align:right">
+        <div style="font-family:var(--mono);font-size:13px">${h.result}</div>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button class="btn secondary" data-copy='${encodeURIComponent(JSON.stringify(h))}'>Copy</button>
+        </div>
+      </div>`;
+    list.appendChild(el);
+  }
+  // copy buttons
+  list.querySelectorAll('button[data-copy]').forEach(b=>{
+    b.addEventListener('click', ()=> {
+      const payload = decodeURIComponent(b.dataset.copy);
+      navigator.clipboard.writeText(payload).then(()=> b.textContent='Copied');
+    });
+  });
+}
+
+document.getElementById('histSearch').addEventListener('input', renderHistory);
+document.getElementById('histFilter').addEventListener('change', renderHistory);
+document.getElementById('clearHistory').addEventListener('click', ()=> { if(confirm('Clear history?')){ state.history=[]; localStorage.removeItem('uc_history'); renderHistory(); renderQuick(); }});
+document.getElementById('clearHistoryTop').addEventListener('click', ()=> document.getElementById('clearHistory').click());
+
+function renderQuick(){
+  const ql = document.getElementById('quickList');
+  ql.innerHTML = '';
+  const items = state.history.slice(0,6);
+  for(const h of items){
+    const d = document.createElement('div'); d.style.display='flex'; d.style.justifyContent='space-between'; d.style.padding='6px 0';
+    d.innerHTML = `<div style="font-size:13px">${h.module}</div><div style="font-family:var(--mono)">${h.result}</div>`;
+    ql.appendChild(d);
+  }
+}
+renderHistory(); renderQuick();
+
+/* export history */
+document.getElementById('exportHistory').addEventListener('click', ()=>{
+  const blob = new Blob([JSON.stringify(state.history, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'uc_history.json'; a.click();
+  URL.revokeObjectURL(url);
+});
+
+/* ---------------------------
+   Module 2: Physics implementations
+   --------------------------- */
+document.getElementById('convertC').addEventListener('click', ()=>{
+  const v = parseFloat(document.getElementById('cInput').value) || 1;
+  const u = document.getElementById('cUnit').value;
+  const c = 299792458;
+  const out = {};
+  // normalize to m/s
+  let mps = v;
+  switch(u){
+    case 'km/s': mps = v*1000; break;
+    case 'miles/s': mps = v*1609.344; break;
+    case 'mph': mps = v*0.44704; break;
+    case 'mach': mps = v*340.29; break;
+    case 'light-min': mps = v* (c*60); break;
+    case 'light-yr': mps = v* (c* (60*60*24*365)); break;
+    default: mps = v;
+  }
+  out['m/s'] = mps;
+  out['km/s'] = mps/1000;
+  out['mph'] = mps/0.44704;
+  out['miles/s'] = mps/1609.344;
+  out['mach'] = mps/340.29;
+  out['light-min'] = mps/(c*60);
+  out['light-yr'] = mps/(c*(60*60*24*365));
+  let txt = '';
+  for(const k in out) txt+= `${k}: ${out[k]}\n`;
+  document.getElementById('cOutput').textContent = txt;
+  addHistory('Physics', `c conv ${v}${u}`, out);
+});
+
+document.getElementById('solveKin').addEventListener('click', ()=>{
+  const u = parseFloat(document.getElementById('u').value);
+  const v = parseFloat(document.getElementById('v').value);
+  const a = parseFloat(document.getElementById('a').value);
+  const t = parseFloat(document.getElementById('t').value);
+  const s = parseFloat(document.getElementById('s').value);
+  const known = {u,v,a,t,s};
+  const keys = Object.keys(known).filter(k=>!isNaN(known[k]));
+  let out = '';
+  try{
+    // if three provided, solve simple cases
+    // try v = u + a t
+    if(!isNaN(u) && !isNaN(a) && isNaN(v) && !isNaN(t)){
+      const vcalc = u + a*t; out = `v = ${vcalc}`; document.getElementById('kinOutput').textContent = out; addHistory('Physics','Kinematics',out); return;
+    }
+    // v^2 = u^2 + 2as
+    if(!isNaN(u) && !isNaN(a) && isNaN(v) && !isNaN(s)){
+      const vcalc = Math.sqrt(u*u + 2*a*s); out = `v = ${vcalc}`; document.getElementById('kinOutput').textContent = out; addHistory('Physics','Kinematics',out); return;
+    }
+    // s = u t + 1/2 a t^2
+    if(!isNaN(u) && !isNaN(t) && !isNaN(a) && isNaN(s)){
+      const scalc = u*t + 0.5*a*t*t; out = `s = ${scalc}`; document.getElementById('kinOutput').textContent = out; addHistory('Physics','Kinematics',out); return;
+    }
+    document.getElementById('kinOutput').textContent = 'Please provide at least three values (u,v,a,t,s) to solve.';
+  }catch(err){ document.getElementById('kinOutput').textContent = 'Error: '+err.message; }
+});
+
+document.getElementById('calcF').addEventListener('click', ()=>{
+  const m = parseFloat(document.getElementById('mass').value)||0;
+  const a = parseFloat(document.getElementById('acc').value)||0;
+  const d = parseFloat(document.getElementById('dist').value)||0;
+  const v = parseFloat(document.getElementById('vel').value)||0;
+  const F = m*a;
+  const W = F*d;
+  const KE = 0.5*m*v*v;
+  const out = `F = ${F} N\nW = ${W} J\nKE = ${KE} J`;
+  document.getElementById('fOutput').textContent = out;
+  addHistory('Physics',`F/W/KE m=${m},a=${a},d=${d},v=${v}`,out);
+});
+
+document.getElementById('projCalc').addEventListener('click', ()=>{
+  const u = parseFloat(document.getElementById('projSpeed').value)||0;
+  const a = (parseFloat(document.getElementById('projAngle').value)||0) * Math.PI/180;
+  const g = 9.80665;
+  const range = (u*u*Math.sin(2*a))/g;
+  const h = (u*u*Math.pow(Math.sin(a),2)) / (2*g);
+  const tf = (2*u*Math.sin(a))/g;
+  const out = `Range: ${range} m\nMax height: ${h} m\nTime of flight: ${tf} s`;
+  document.getElementById('projOutput').textContent = out;
+  addHistory('Physics',`Projectile u=${u},a=${a}`,out);
+});
+
+document.getElementById('fallCalc').addEventListener('click', ()=>{
+  const h = parseFloat(document.getElementById('fallHeight').value)||0;
+  const g = 9.80665;
+  const t = Math.sqrt(2*h/g);
+  const v = Math.sqrt(2*g*h);
+  const out = `Time: ${t} s\nImpact velocity: ${v} m/s`;
+  document.getElementById('projOutput').textContent = out;
+  addHistory('Physics',`Freefall h=${h}`,out);
+});
+
+/* ---------------------------
+   Module 3: Data & Speed
+   --------------------------- */
+function parseHumanSize(str){
+  if(!str) return 0;
+  const m = str.trim().match(/([\d.]+)\s*(B|KB|MB|GB|TB|PB)?/i);
+  if(!m) return NaN;
+  let v = parseFloat(m[1]);
+  const unit = (m[2]||'B').toUpperCase();
+  const map = {B:1,KB:1e3,MB:1e6,GB:1e9,TB:1e12,PB:1e15};
+  return v * (map[unit]||1);
+}
+function parseSpeed(str){
+  if(!str) return 0;
+  const m = str.trim().match(/([\d.]+)\s*(bps|kbps|mbps|gbps)?/i);
+  if(!m) return NaN;
+  let v = parseFloat(m[1]);
+  const unit = (m[2]||'bps').toLowerCase();
+  const map = {bps:1,kbps:1e3,mbps:1e6,gbps:1e9};
+  return v * (map[unit]||1);
+}
+
+document.getElementById('transferCalc').addEventListener('click', ()=>{
+  const file = document.getElementById('fileSize').value;
+  const sp = document.getElementById('speedVal').value;
+  const bytes = parseHumanSize(file);
+  const bps = parseSpeed(sp);
+  if(isNaN(bytes) || isNaN(bps) || bps===0){ document.getElementById('transferOut').textContent='Invalid inputs'; return; }
+  const bits = bytes*8;
+  const sec = bits / bps;
+  const hh = Math.floor(sec/3600); const mm = Math.floor((sec%3600)/60); const ss = Math.round(sec%60);
+  document.getElementById('transferOut').textContent = `Time: ${hh}h ${mm}m ${ss}s (${sec.toFixed(2)} s)`;
+  addHistory('Data', `Transfer ${file} @ ${sp}`, `${hh}h ${mm}m ${ss}s`);
+});
+
+document.getElementById('duCalc').addEventListener('click', ()=>{
+  const v = parseFloat(document.getElementById('duVal').value) || 0;
+  const from = document.getElementById('duFrom').value;
+  const to = document.getElementById('duTo').value;
+  const map = {B:1,KB:1e3,MB:1e6,GB:1e9,TB:1e12};
+  const out = v * map[from] / map[to];
+  document.getElementById('duOut').textContent = `${v} ${from} = ${out} ${to}`;
+  addHistory('Data', `Convert ${v}${from} to ${to}`, out);
+});
+
+document.querySelectorAll('button[data-size]').forEach(b=>{
+  b.addEventListener('click', ()=> {
+    const sz = b.dataset.size, sp = b.dataset.speed;
+    document.getElementById('presetOut').textContent = `Preset: ${sz} @ ${sp}`;
+    document.getElementById('fileSize').value = sz;
+    document.getElementById('speedVal').value = sp;
+    document.getElementById('transferCalc').click();
+  });
+});
+
+document.getElementById('bwCalc').addEventListener('click', ()=>{
+  const users = parseInt(document.getElementById('users').value)||1;
+  const activity = document.getElementById('activity').value;
+  const per = {browse:0.2,gaming:3,videoSD:1,videoHD:5,video4K:25,videocall:2};
+  const perUser = per[activity]||1;
+  const total = perUser*users;
+  document.getElementById('bwOut').textContent = `Recommended minimum: ${total} Mbps`;
+  addHistory('Data', `Bandwidth est ${users}x${activity}`, `${total} Mbps`);
+});
+
+/* ---------------------------
+   Module 4: Electricity
+   --------------------------- */
+document.getElementById('ohmCalc').addEventListener('click', ()=>{
+  const V = parseFloat(document.getElementById('V').value);
+  const I = parseFloat(document.getElementById('I').value);
+  const R = parseFloat(document.getElementById('R').value);
+  const P = parseFloat(document.getElementById('P').value);
+  let out = '';
+  try{
+    // use combinations
+    if(!isNaN(V) && !isNaN(I)){
+      const Rcalc = V/I; const Pcalc = V*I;
+      out = `R = ${Rcalc} Ω\nP = ${Pcalc} W`;
+    } else if(!isNaN(V) && !isNaN(R)){
+      const Icalc = V/R; const Pcalc = V*Icalc;
+      out = `I = ${Icalc} A\nP = ${Pcalc} W`;
+    } else if(!isNaN(I) && !isNaN(R)){
+      const Vcalc = I*R; const Pcalc = I*I*R;
+      out = `V = ${Vcalc} V\nP = ${Pcalc} W`;
+    } else if(!isNaN(P) && !isNaN(I)){
+      const Vcalc = P/I; const Rcalc = Vcalc/I;
+      out = `V = ${Vcalc} V\nR = ${Rcalc} Ω`;
+    } else {
+      out = 'Please provide any two of V, I, R, P.';
+    }
+    document.getElementById('ohmOut').textContent = out;
+    addHistory('Electricity', `Ohm inputs V=${V},I=${I},R=${R},P=${P}`, out);
+    // draw simple circuit highlight
+    const svg = document.getElementById('circuit');
+    svg.innerHTML = `<line x1="10" y1="60" x2="100" y2="60" stroke="rgba(255,255,255,0.06)" stroke-width="6"/><rect x="100" y="40" width="60" height="40" fill="rgba(0,0,0,0.2)" stroke="rgba(0,212,255,0.08)"/><line x1="160" y1="60" x2="300" y2="60" stroke="rgba(255,255,255,0.06)" stroke-width="6"/>`;
+  }catch(err){ document.getElementById('ohmOut').textContent='Error: '+err.message; }
+});
+
+document.getElementById('rpmCalc').addEventListener('click', ()=>{
+  const f = parseFloat(document.getElementById('freq').value)||0;
+  const p = parseFloat(document.getElementById('poles').value)||2;
+  const rpm = (120 * f) / p;
+  document.getElementById('motorOut').textContent = `RPM = ${rpm}`;
+  addHistory('Electricity', `RPM f=${f},p=${p}`, `RPM=${rpm}`);
+});
+
+document.getElementById('torqueCalc').addEventListener('click', ()=>{
+  const P = parseFloat(document.getElementById('powerW').value)||0;
+  const RPM = parseFloat(document.getElementById('rpmVal').value)||1;
+  const omega = 2*Math.PI*(RPM/60);
+  const T = P/omega;
+  document.getElementById('motorOut').textContent = `Torque = ${T} N·m`;
+  addHistory('Electricity', `Torque P=${P},RPM=${RPM}`, `T=${T}`);
+});
+
+document.getElementById('energyCalc').addEventListener('click', ()=>{
+  const W = parseFloat(document.getElementById('wattage').value)||0;
+  const h = parseFloat(document.getElementById('hours').value)||0;
+  const days = parseFloat(document.getElementById('days').value)||0;
+  const price = parseFloat(document.getElementById('price').value)||0;
+  const kWh = (W*h*days)/1000;
+  const cost = kWh * price;
+  document.getElementById('energyOut').textContent = `kWh: ${kWh}\nCost: ${cost}`;
+  addHistory('Electricity', `Energy W=${W},h=${h},days=${days}`, `kWh=${kWh}, cost=${cost}`);
+});
+
+document.getElementById('reactCalc').addEventListener('click', ()=>{
+  const R = parseFloat(document.getElementById('cR').value)||0;
+  const C = parseFloat(document.getElementById('cC').value)||0;
+  const f = parseFloat(document.getElementById('iFreq').value)||0;
+  const L = parseFloat(document.getElementById('iL').value)||0;
+  const tau = R*C;
+  const XL = 2*Math.PI*f*L;
+  const XC = 1/(2*Math.PI*f*C || Infinity);
+  document.getElementById('reactOut').textContent = `τ = ${tau}\nXL = ${XL}\nXC = ${XC}`;
+  addHistory('Electricity','Reactive',`τ=${tau},XL=${XL},XC=${XC}`);
+});
+
+/* ---------------------------
+   Module 5: Chemistry (Periodic table + molar mass)
+   --------------------------- */
+/* Minimal periodic table data (atomic masses) for 118 elements */
+const PERIODIC = {
+ H:1.008, He:4.002602, Li:6.94, Be:9.0121831, B:10.81, C:12.011, N:14.007, O:15.999, F:18.998403163, Ne:20.1797,
+ Na:22.98976928, Mg:24.305, Al:26.9815385, Si:28.085, P:30.973761998, S:32.06, Cl:35.45, Ar:39.948,
+ K:39.0983, Ca:40.078, Sc:44.955908, Ti:47.867, V:50.9415, Cr:51.9961, Mn:54.938044, Fe:55.845, Co:58.933194, Ni:58.6934,
+ Cu:63.546, Zn:65.38, Ga:69.723, Ge:72.630, As:74.921595, Se:78.971, Br:79.904, Kr:83.798,
+ Rb:85.4678, Sr:87.62, Y:88.90584, Zr:91.224, Nb:92.90637, Mo:95.95, Tc:98, Ru:101.07, Rh:102.90550, Pd:106.42,
+ Ag:107.8682, Cd:112.414, In:114.818, Sn:118.710, Sb:121.760, Te:127.60, I:126.90447, Xe:131.293,
+ Cs:132.90545196, Ba:137.327, La:138.90547, Ce:140.116, Pr:140.90766, Nd:144.242, Pm:145, Sm:150.36,
+ Eu:151.964, Gd:157.25, Tb:158.92535, Dy:162.500, Ho:164.93033, Er:167.259, Tm:168.93422, Yb:173.045, Lu:174.9668,
+ Hf:178.49, Ta:180.94788, W:183.84, Re:186.207, Os:190.23, Ir:192.217, Pt:195.084, Au:196.966569, Hg:200.592,
+ Tl:204.38, Pb:207.2, Bi:208.98040, Po:209, At:210, Rn:222,
+ Fr:223, Ra:226, Ac:227, Th:232.0377, Pa:231.03588, U:238.02891, Np:237, Pu:244, Am:243, Cm:247,
+ Bk:247, Cf:251, Es:252, Fm:257, Md:258, No:259, Lr:266, Rf:267, Db:268, Sg:269, Bh:270, Hs:269, Mt:278,
+ Ds:281, Rg:282, Cn:285, Nh:286, Fl:289, Mc:289, Lv:293, Ts:294, Og:294
+};
+
+function parseFormula(formula){
+  // parse with regex to capture element and optional count, including parentheses
+  // This parser supports parentheses and nested groups.
+  const stack = [{}];
+  const tokens = formula.match(/([A-Z][a-z]?|\(|\)|\d+|\[[^\]]+\])/g);
+  if(!tokens) return null;
+  for(let token of tokens){
+    if(token==='('){
+      stack.push({});
+    } else if(token===')'){
+      const top = stack.pop();
+      let mult = 1;
+      const next = tokens.shift ? undefined : undefined;
+      // peek next token if number
+    } else {
+      // fallback simpler parse using regex for element groups
+    }
+  }
+  // Use simpler approach: expand groups using regex with parentheses iterative replacement
+  let f = formula;
+  const parenRE = /\(([^\(\)]+)\)(\d*)/;
+  while(parenRE.test(f)){
+    f = f.replace(parenRE, (m,group,n)=>{
+      const times = parseInt(n)||1;
+      let out='';
+      const parts = group.match(/([A-Z][a-z]?)(\d*)/g) || [];
+      for(const p of parts){
+        const mm = p.match(/([A-Z][a-z]?)(\d*)/);
+        const el = mm[1]; const ct = parseInt(mm[2])||1;
+        out += el + (ct*times);
+      }
+      return out;
+    });
+  }
+  const parts = f.match(/([A-Z][a-z]?)(\d*)/g) || [];
+  const counts = {};
+  for(const p of parts){
+    const mm = p.match(/([A-Z][a-z]?)(\d*)/);
+    const el = mm[1]; const ct = parseInt(mm[2])||1;
+    counts[el] = (counts[el]||0)+ct;
+  }
+  return counts;
+}
+
+document.getElementById('mmCalc').addEventListener('click', ()=>{
+  const formula = document.getElementById('formula').value.trim();
+  if(!formula){ document.getElementById('mmOut').textContent='Enter a formula'; return; }
+  const parsed = parseFormula(formula);
+  if(!parsed){ document.getElementById('mmOut').textContent='Could not parse formula'; return; }
+  let total = 0; let breakdown = '';
+  for(const el in parsed){
+    const count = parsed[el];
+    const mass = PERIODIC[el];
+    if(!mass){ breakdown += `${el} not found\n`; continue; }
+    total += mass * count;
+    breakdown += `${el} (${count}): ${mass} × ${count} = ${mass*count}\n`;
+  }
+  document.getElementById('mmOut').textContent = `Molar mass: ${total} g/mol\n\n${breakdown}`;
+  addHistory('Chemistry', formula, `${total} g/mol`);
+});
+
+/* Molarity, ideal gas, pH */
+document.getElementById('molarCalc').addEventListener('click', ()=>{
+  const mass = parseFloat(document.getElementById('mass_m').value) || 0;
+  const mm = parseFloat(document.getElementById('molarmass_m').value) || 1;
+  const vol = parseFloat(document.getElementById('vol_L').value) || 1;
+  const moles = mass/mm;
+  const M = moles/vol;
+  document.getElementById('molarOut').textContent = `Moles: ${moles}\nMolarity: ${M} M`;
+  addHistory('Chemistry', `Molar mass calc mass=${mass}`, `M=${M}`);
+});
+
+document.getElementById('idealCalc').addEventListener('click', ()=>{
+  let P = parseFloat(document.getElementById('P').value);
+  let V = parseFloat(document.getElementById('V').value);
+  let n = parseFloat(document.getElementById('n').value);
+  let T = parseFloat(document.getElementById('T').value);
+  const R = 0.08206; // L·atm/(mol·K)
+  let out='';
+  if(isNaN(P)) P = n*R*T/V;
+  else if(isNaN(V)) V = n*R*T/P;
+  else if(isNaN(n)) n = P*V/(R*T);
+  else if(isNaN(T)) T = P*V/(n*R);
+  out = `P=${P} atm\nV=${V} L\nn=${n} mol\nT=${T} K`;
+  document.getElementById('idealOut').textContent = out;
+  addHistory('Chemistry','IdealGas',out);
+});
+
+document.getElementById('pHCalc').addEventListener('click', ()=>{
+  const h = document.getElementById('hConc').value;
+  const pHv = parseFloat(document.getElementById('pHVal').value);
+  if(h){
+    const val = parseFloat(h);
+    const pH = -Math.log10(val);
+    const pOH = 14 - pH;
+    document.getElementById('pHOut').textContent = `pH: ${pH}\npOH: ${pOH}`;
+    addHistory('Chemistry',`pH [H+]=${h}`,`pH=${pH}`);
+  } else if(!isNaN(pHv)){
+    const H = Math.pow(10,-pHv);
+    const pOH = 14 - pHv;
+    document.getElementById('pHOut').textContent = `[H+]=${H}\npOH=${pOH}`;
+    addHistory('Chemistry',`pH val=${pHv}`,`[H+]=${H}`);
+  } else {
+    document.getElementById('pHOut').textContent = 'Enter [H+] or pH';
+  }
+});
+
+/* ---------------------------
+   Module 6: Trig (unit circle & right triangle)
+   --------------------------- */
+const unitLayer = document.getElementById('dotLayer');
+function drawUnitDot(angleRad){
+  unitLayer.innerHTML = '';
+  const r = 90;
+  const x = r * Math.cos(angleRad);
+  const y = -r * Math.sin(angleRad);
+  const circle = document.createElementNS('http://www.w3.org/2000/svg','circle');
+  circle.setAttribute('cx',x); circle.setAttribute('cy',y); circle.setAttribute('r',6);
+  circle.setAttribute('fill','url(#g1)');
+  unitLayer.appendChild(circle);
+  // line to x-axis
+  const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+  line.setAttribute('x1',0); line.setAttribute('y1',0); line.setAttribute('x2',x); line.setAttribute('y2',y);
+  line.setAttribute('stroke','rgba(0,212,255,0.12)'); line.setAttribute('stroke-width',2);
+  unitLayer.appendChild(line);
+}
+
+document.getElementById('angleApply').addEventListener('click', ()=>{
+  const input = parseFloat(document.getElementById('angleIn').value)||0;
+  const unit = document.getElementById('angleUnit').value;
+  let rad = input;
+  if(unit==='deg') rad = input * Math.PI/180;
+  else if(unit==='grad') rad = input * Math.PI/200;
+  // animate dot smoothly
+  let start = performance.now();
+  const startAngle = 0;
+  const duration = 500;
+  function animate(now){
+    const t = Math.min(1,(now-start)/duration);
+    const a = startAngle + (rad-startAngle)*t;
+    drawUnitDot(a);
+    if(t<1) requestAnimationFrame(animate);
+    else {
+      const sin = Math.sin(rad), cos = Math.cos(rad), tan = Math.tan(rad);
+      document.getElementById('trigOut').textContent = `sin=${sin}\ncos=${cos}\ntan=${tan}`;
+      addHistory('Trigonometry', `angle ${input}${unit}`, `sin=${sin}, cos=${cos}`);
+    }
+  }
+  requestAnimationFrame(animate);
+});
+
+document.getElementById('triSolve').addEventListener('click', ()=>{
+  const a = parseFloat(document.getElementById('sideA').value);
+  const b = parseFloat(document.getElementById('sideB').value);
+  const c = parseFloat(document.getElementById('sideC').value);
+  const A = parseFloat(document.getElementById('angleAlpha').value);
+  // basic right triangle solve
+  try{
+    if(!isNaN(a) && !isNaN(b)){
+      const ccalc = Math.sqrt(a*a + b*b);
+      document.getElementById('triOut').textContent = `c=${ccalc}`;
+      addHistory('Trigonometry','Right triangle',`c=${ccalc}`);
+    } else if(!isNaN(a) && !isNaN(c)){
+      const bcalc = Math.sqrt(c*c - a*a);
+      document.getElementById('triOut').textContent = `b=${bcalc}`;
+      addHistory('Trigonometry','Right triangle',`b=${bcalc}`);
+    } else if(!isNaN(A) && !isNaN(a)){
+      const rad = A*Math.PI/180;
+      const bcalc = a*Math.tan(rad);
+      document.getElementById('triOut').textContent = `b=${bcalc}`;
+    } else {
+      document.getElementById('triOut').textContent = 'Provide two values';
+    }
+  }catch(err){ document.getElementById('triOut').textContent = 'Error: '+err.message; }
+});
+
+document.getElementById('losCalc').addEventListener('click', ()=>{
+  const a = parseFloat(document.getElementById('aLS').value);
+  const b = parseFloat(document.getElementById('bLS').value);
+  const c = parseFloat(document.getElementById('cLS').value);
+  const A = parseFloat(document.getElementById('A_LS').value);
+  // show example: if a,b,A given, find c using law of cos if appropriate
+  if(!isNaN(a) && !isNaN(b) && !isNaN(A)){
+    const A_r = A * Math.PI/180;
+    const ccalc = Math.sqrt(a*a + b*b - 2*a*b*Math.cos(A_r));
+    document.getElementById('losOut').textContent = `c = ${ccalc}`;
+    addHistory('Trigonometry','Law of Cos',`c=${ccalc}`);
+  } else {
+    document.getElementById('losOut').textContent = 'Provide a, b, and A to compute c via law of cosines.';
+  }
+});
+
+/* ---------------------------
+   Module 7: Logic & Conversions
+   --------------------------- */
+document.getElementById('baseConv').addEventListener('click', ()=>{
+  const val = document.getElementById('baseInput').value.trim();
+  const from = parseInt(document.getElementById('fromBase').value);
+  const to = parseInt(document.getElementById('toBase').value);
+  try{
+    const dec = parseInt(val,from);
+    const out = dec.toString(to).toUpperCase();
+    document.getElementById('baseOut').textContent = out;
+    addHistory('Logic',`Base conv ${val} from ${from} to ${to}`, out);
+  }catch(err){ document.getElementById('baseOut').textContent = 'Error'; }
+});
+
+document.getElementById('truthCalc').addEventListener('click', ()=>{
+  const gate = document.getElementById('gateSelect').value;
+  const vars = parseInt(document.getElementById('varCount').value);
+  const rows = Math.pow(2,vars);
+  let out = '';
+  for(let i=0;i<rows;i++){
+    const bits = i.toString(2).padStart(vars,'0').split('').map(Number);
+    let res;
+    if(gate==='NOT') res = bits.length ? (bits[0]^1) : 1;
+    else if(gate==='AND') res = bits.reduce((a,b)=>a&b,1);
+    else if(gate==='OR') res = bits.reduce((a,b)=>a|b,0);
+    else if(gate==='NAND') res = (bits.reduce((a,b)=>a&b,1))^1;
+    else if(gate==='NOR') res = (bits.reduce((a,b)=>a|b,0))^1;
+    else if(gate==='XOR') res = bits.reduce((a,b)=>a^b,0);
+    else if(gate==='XNOR') res = (bits.reduce((a,b)=>a^b,0))^1;
+    out += `${bits.join(' ')} | ${res}\n`;
+  }
+  document.getElementById('truthOut').textContent = out;
+  addHistory('Logic',`Truth ${gate}`,out);
+});
+
+document.getElementById('ucCalc').addEventListener('click', ()=>{
+  const v = parseFloat(document.getElementById('ucVal').value)||0;
+  const from = document.getElementById('ucFrom').value;
+  const to = document.getElementById('ucTo').value;
+  const map = {m:1,km:1000,cm:0.01,mm:0.001,in:0.0254,ft:0.3048,mi:1609.344};
+  const out = v * map[from] / map[to];
+  document.getElementById('ucOut').textContent = `${out} ${to}`;
+  addHistory('Logic',`Unit conv ${v}${from} to ${to}`,out);
+});
+
+document.getElementById('permCalc').addEventListener('click', ()=>{
+  const n = parseInt(document.getElementById('nVal').value);
+  const r = parseInt(document.getElementById('rVal').value);
+  if(isNaN(n)||isNaN(r)) return;
+  const p = fact(n)/fact(n-r);
+  document.getElementById('facOut').textContent = `P(${n},${r}) = ${p}`;
+  addHistory('Logic',`P ${n},${r}`,p);
+});
+document.getElementById('combCalc').addEventListener('click', ()=>{
+  const n = parseInt(document.getElementById('nVal').value);
+  const r = parseInt(document.getElementById('rVal').value);
+  if(isNaN(n)||isNaN(r)) return;
+  const c = fact(n)/(fact(r)*fact(n-r));
+  document.getElementById('facOut').textContent = `C(${n},${r}) = ${c}`;
+  addHistory('Logic',`C ${n},${r}`,c);
+});
+function fact(n){ return n<=1?1:n*fact(n-1); }
+
+/* ---------------------------
+   Initialization & small handlers
+   --------------------------- */
+document.getElementById('aboutBtn').addEventListener('click', ()=> alert('Universal Calculator — single file demo. Uses math.js.'));
+
+document.getElementById('ohmCalc').click; // noop
+
+// initial render
+refreshDisplay();
+renderHistory();
+renderQuick();
+
+// small polish: attach copy handlers for card buttons (delegated)
+document.addEventListener('click', (e)=>{
+  if(e.target.matches('.card button[data-copy]')){
+    const text = e.target.dataset.copy;
+    navigator.clipboard.writeText(text);
+  }
+});
+</script>
+</body>
+</html>
